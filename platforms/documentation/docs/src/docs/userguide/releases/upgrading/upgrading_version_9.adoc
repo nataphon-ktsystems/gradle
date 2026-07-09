@@ -36,6 +36,29 @@ The previous step will help you identify potential problems by issuing deprecati
 . Run `gradle :wrapper --gradle-version {gradleVersion}` to update the project to {gradleVersion}.
 . Try to run the project and debug any errors using the <<troubleshooting.adoc#troubleshooting, Troubleshooting Guide>>.
 
+[[changes_9.8.0]]
+== Upgrading from 9.7.0 and earlier
+
+=== Potential breaking changes
+
+[[task_logging_listeners_are_now_stored_in_the_configuration_cache]]
+==== Task logging listeners are now stored in the Configuration Cache
+
+Standard output and error listeners registered on a task's logging manager during configuration (for example via link:{javadocPath}/org/gradle/api/logging/LoggingOutput.html#addStandardOutputListener(org.gradle.api.logging.StandardOutputListener)[`LoggingOutput.addStandardOutputListener`] or link:{javadocPath}/org/gradle/api/logging/LoggingOutput.html#addStandardErrorListener(org.gradle.api.logging.StandardOutputListener)[`LoggingOutput.addStandardErrorListener`]) are now stored in the Configuration Cache and re-registered on a cache hit, so they receive the task's output as they would without the Configuration Cache.
+
+Previously, these listeners were silently discarded and never received output when the Configuration Cache was used.
+
+A listener that cannot be serialized is now reported as a Configuration Cache problem instead of being silently dropped, which may cause a build that previously worked to fail.
+If your build registers such a listener and the listener is nonessential, you can opt out and restore the previous behavior — listeners are not serialized, so they are dropped on a cache hit and no problem is reported — by setting:
+
+[source,properties]
+----
+org.gradle.configuration-cache.unsafe.skip-task-logging-listeners-serialization=true
+----
+
+This property is a temporary opt-out and will be removed in a future Gradle release.
+
+
 [[changes_9.7.0]]
 == Upgrading from 9.6.0 and earlier
 
@@ -50,7 +73,8 @@ As a result, a custom project cache directory no longer disables file system wat
 Previously, `--project-cache-dir` (or `org.gradle.projectcachedir`) was incompatible with watching: passing `--watch-fs` alongside it failed the build, and leaving watching at its default silently disabled it.
 File system watching now follows the usual rules regardless of where the project cache directory is located.
 
-This also applies to source-dependency check-outs, which live under the project cache directory: their roots are no longer registered as watchable hierarchies.
+This applies to the project cache directory itself.
+Source-dependency check-outs, which live under the project cache directory but whose contents can change externally, remain watched as regular build directories.
 
 See <<file_system_watching.adoc#sec:excluding_files_and_directories,Excluding files and directories>> for details.
 
@@ -137,6 +161,27 @@ enableFeaturePreview("ENHANCED_GRAPH_ORDERING")
 
 === Deprecations
 
+[[deprecated_software_model]]
+==== Deprecation of the software model
+
+The Gradle software model — including the `model { }` DSL, link:{javadocPath}/org/gradle/model/RuleSource.html[`RuleSource`] plugins, and the native and JVM component types built on top of them — is deprecated and will be removed in Gradle 10.
+
+This affects the following groups of public API types:
+
+- The rule-authoring API in `org.gradle.model`: `RuleSource`, `ModelMap`, `ModelSet`, `ModelElement`, and the `@Model`, `@Mutate`, `@Defaults`, `@Finalize`, `@Validate`, `@Each`, `@Path`, `@RuleInput`, `@RuleTarget`, `@Rules`, `@Managed`, and `@Unmanaged` annotations.
+- The component-model base API in `org.gradle.platform.base` and `org.gradle.language.base`: `ComponentSpec`, `BinarySpec`, `LibrarySpec`, `ApplicationSpec`, `LanguageSourceSet`, and related container, builder, and annotation types.
+- The native component plugins: `c`, `cpp`, `objective-c`, `objective-cpp`, `assembler`, `windows-resources`, and `native-component`, along with their source-set, binary-spec, build-type, flavor, and prebuilt-library types in `org.gradle.nativeplatform` and `org.gradle.language.*`.
+- The native test plugins `cunit`, `cunit-test-suite`, `google-test`, and `google-test-test-suite`, along with the rule-based `test-suite-base` infrastructure in `org.gradle.testing.base`.
+- The `componentReport` and `dependentComponents` diagnostic tasks.
+
+Replace software-model-based builds with the current component model:
+
+- For C and {cpp}, use the link:{userManualPath}/cpp_application_plugin.html[`cpp-application`] and link:{userManualPath}/cpp_library_plugin.html[`cpp-library`] plugins.
+- For Swift, use the link:{userManualPath}/swift_application_plugin.html[`swift-application`] and link:{userManualPath}/swift_library_plugin.html[`swift-library`] plugins.
+- For native testing, use the link:{userManualPath}/cpp_unit_test_plugin.html[`cpp-unit-test`] and link:{userManualPath}/xctest_plugin.html[`xctest`] plugins.
+
+The new plugins configure components through ordinary Gradle extensions (`application { }`, `library { }`, `unitTest { }`) without the `model { }` block, integrate with the configuration cache, and support Gradle's standard dependency-management features.
+
 [[deprecated_unsafe_isolated_projects_properties]]
 ==== Deprecation of `org.gradle.unsafe.isolated-projects*` property names
 
@@ -172,6 +217,20 @@ Referencing such a custom subtype from a task field or task action is now deprec
 To fix it, use a standard collection or map type instead of a custom subtype, and store any extra data in separate fields.
 
 See <<configuration_cache_requirements.adoc#config_cache:requirements:custom_collection_types, Custom Collection and Map Types>> for details.
+
+[[deprecated_startparameter_construction]]
+==== Deprecation of creating and copying `StartParameter`
+
+Starting in Gradle 10, constructing new instances of link:{javadocPath}/org/gradle/StartParameter.html[`StartParameter`] will no longer be permitted.
+It was never intended to be instantiated or copied by build logic, but the public no-argument constructor and the `newInstance()` / `newBuild()` methods made that possible.
+
+The following have been deprecated for removal:
+
+- the public link:{javadocPath}/org/gradle/StartParameter.html[`StartParameter()`] constructor
+- link:{javadocPath}/org/gradle/StartParameter.html#newInstance()[`StartParameter.newInstance()`]
+- link:{javadocPath}/org/gradle/StartParameter.html#newBuild()[`StartParameter.newBuild()`]
+
+The existing `StartParameter` instance for a build may be obtained via link:{javadocPath}/org/gradle/api/invocation/Gradle.html#getStartParameter()[`Gradle.getStartParameter()`] instead of constructing or copying one.
 
 [[changes_9.6.0]]
 == Upgrading from 9.5.0 and earlier
